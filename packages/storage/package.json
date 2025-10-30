@@ -1,0 +1,32 @@
+{
+  "name": "@wiserpin/storage",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage"
+  },
+  "dependencies": {
+    "@wiserpin/core": "workspace:*",
+    "idb": "^8.0.2"
+  },
+  "devDependencies": {
+    "@wiserpin/test-utils": "workspace:*",
+    "@wiserpin/tsconfig": "workspace:*",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  }
+}

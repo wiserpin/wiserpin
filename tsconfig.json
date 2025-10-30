@@ -1,0 +1,15 @@
+{
+  "extends": "./packages/tsconfig/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@wiserpin/core": ["./packages/core/src"],
+      "@wiserpin/ui": ["./packages/ui/src"],
+      "@wiserpin/storage": ["./packages/storage/src"],
+      "@wiserpin/prompts": ["./packages/prompts/src"],
+      "@wiserpin/test-utils": ["./packages/test-utils/src"]
+    }
+  },
+  "include": ["packages/**/*", "apps/**/*", "vitest.setup.ts", "global.d.ts"],
+  "exclude": ["node_modules", "dist", "build"]
+}
