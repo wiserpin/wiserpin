@@ -3,7 +3,6 @@ import { getDB, STORES } from '../db/schema';
 import {
   NotFoundError,
   TransactionError,
-  DuplicateError,
 } from '../errors/storage-error';
 
 /**
@@ -28,15 +27,10 @@ export async function checkPinExists(url: string): Promise<boolean> {
 
 /**
  * Add a new pin
+ * Note: Allows duplicate URLs so the same page can be pinned to multiple collections
  */
 export async function addPin(input: CreatePinInput): Promise<string> {
   try {
-    // Check for duplicate URL
-    const exists = await checkPinExists(input.page.url);
-    if (exists) {
-      throw new DuplicateError('Pin', 'url', input.page.url);
-    }
-
     const db = await getDB();
     const now = new Date().toISOString();
 
@@ -49,9 +43,6 @@ export async function addPin(input: CreatePinInput): Promise<string> {
     await db.add(STORES.PINS, pin);
     return pin.id;
   } catch (error) {
-    if (error instanceof DuplicateError) {
-      throw error;
-    }
     throw new TransactionError('Failed to add pin', error);
   }
 }

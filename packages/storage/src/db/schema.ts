@@ -10,8 +10,9 @@ export const DB_NAME = 'wiserpin-db';
 
 /**
  * Current database version
+ * v2: Removed unique constraint on URL to allow same page in multiple collections
  */
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 /**
  * Object store names
@@ -48,7 +49,9 @@ export interface WiserPinDB {
 export async function initDB(): Promise<IDBPDatabase<WiserPinDB>> {
   try {
     const db = await openDB<WiserPinDB>(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, oldVersion, newVersion, _transaction) {
+        console.debug(`[WiserPin DB] Upgrading from v${oldVersion} to v${newVersion}`);
+
         // Collections store
         if (!db.objectStoreNames.contains(STORES.COLLECTIONS)) {
           const collectionsStore = db.createObjectStore(STORES.COLLECTIONS, {
@@ -60,7 +63,14 @@ export async function initDB(): Promise<IDBPDatabase<WiserPinDB>> {
           });
         }
 
-        // Pins store
+        // Pins store - recreate if upgrading from v1 to remove unique constraint
+        if (oldVersion < 2) {
+          if (db.objectStoreNames.contains(STORES.PINS)) {
+            console.debug('[WiserPin DB] Recreating pins store to remove URL unique constraint');
+            db.deleteObjectStore(STORES.PINS);
+          }
+        }
+
         if (!db.objectStoreNames.contains(STORES.PINS)) {
           const pinsStore = db.createObjectStore(STORES.PINS, {
             keyPath: 'id',

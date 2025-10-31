@@ -127,6 +127,93 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       })();
       return true; // Keep message channel open for async response
 
+    case 'SUGGEST_COLLECTION':
+      // Run in async context since we need to await
+      (async () => {
+        try {
+          console.debug('[WiserPin Content] Suggesting collection with Summarizer API...');
+          console.debug('[WiserPin Content] Input:', message.title, message.collections);
+
+          // Check if Summarizer API is available (same as summary generation)
+          if (typeof (window as any).Summarizer === 'undefined') {
+            throw new Error('Summarizer API not available. Please enable chrome://flags/#summarization-api-for-gemini-nano');
+          }
+
+          // Create session
+          const session = await (window as any).Summarizer.create({
+            type: 'tldr',
+            format: 'plain-text',
+            length: 'short',
+          });
+
+          console.debug('[WiserPin Content] Session created, suggesting collection...');
+
+          // Build prompt
+          const collectionsText = message.collections.map((c: any) =>
+            `- ${c.name} (ID: ${c.id})${c.goal ? ` - Goal: ${c.goal}` : ''}`
+          ).join('\n');
+
+          const prompt = `Analyze this web page and choose which collection it belongs to based on the collection goals.
+
+Page: ${message.title}
+URL: ${message.url}
+${message.summary ? `Summary: ${message.summary}` : ''}
+
+Available Collections:
+${collectionsText}
+
+Which collection ID best matches this page based on its goal? Respond with ONLY the ID.`;
+
+          const response = await session.summarize(prompt);
+
+          console.debug('[WiserPin Content] ✅ AI Response:', response);
+
+          // Extract collection ID from response (remove any whitespace/newlines)
+          const responseText = response.trim();
+
+          // Try to find exact ID match first
+          let collectionId = null;
+
+          // Check if response contains any of the collection IDs
+          for (const c of message.collections) {
+            if (responseText.includes(c.id)) {
+              collectionId = c.id;
+              break;
+            }
+          }
+
+          // If no exact ID match, try matching by name
+          if (!collectionId) {
+            for (const c of message.collections) {
+              if (responseText.toLowerCase().includes(c.name.toLowerCase())) {
+                collectionId = c.id;
+                break;
+              }
+            }
+          }
+
+          // Clean up
+          if (session?.destroy) {
+            session.destroy();
+          }
+
+          if (collectionId) {
+            sendResponse({ success: true, collectionId });
+          } else {
+            // Default to first collection if AI can't decide
+            console.debug('[WiserPin Content] Could not parse AI response, using first collection');
+            sendResponse({ success: true, collectionId: message.collections[0].id });
+          }
+        } catch (error) {
+          console.error('[WiserPin Content] ❌ Error suggesting collection:', error);
+          sendResponse({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to suggest collection'
+          });
+        }
+      })();
+      return true; // Keep message channel open for async response
+
     case 'PING':
       sendResponse({ type: 'PONG', from: 'content' });
       break;

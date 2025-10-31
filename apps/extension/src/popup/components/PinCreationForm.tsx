@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Collection, CreatePinInput } from '@wiserpin/core';
-import { addPin, checkPinExists } from '@wiserpin/storage';
+import { addPin } from '@wiserpin/storage';
 import { getDefaultSummarizer } from '@wiserpin/prompts';
 import {
   Button,
@@ -11,6 +11,8 @@ interface PinCreationFormProps {
   collections: Collection[];
   onCollectionCreated: () => Promise<void>;
   onSelectCollection?: () => void;
+  onCollectionSelected?: (collectionId: string, collectionName: string) => void;
+  onViewCollections?: () => void;
   selectedCollectionId?: string;
   selectedCollectionName?: string;
   aiAvailability: string | null;
@@ -25,6 +27,8 @@ interface PinCreationFormProps {
 export function PinCreationForm({
   collections,
   onSelectCollection,
+  onCollectionSelected,
+  onViewCollections,
   selectedCollectionId = '',
   selectedCollectionName = '',
   aiAvailability,
@@ -43,6 +47,7 @@ export function PinCreationForm({
   const [loadingMetadata, setLoadingMetadata] = useState(true);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suggestingCollection, setSuggestingCollection] = useState(false);
 
   // Load current tab info on mount
   useEffect(() => {
@@ -110,6 +115,11 @@ export function PinCreationForm({
         throw new Error('No active tab found');
       }
 
+      // Check if URL is accessible (content scripts can't run on chrome:// pages)
+      if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://'))) {
+        throw new Error('Cannot generate summaries on browser internal pages. Please navigate to a regular webpage.');
+      }
+
       // Send message to content script to generate summary
       const response = await chrome.tabs.sendMessage(tab.id, {
         type: 'GENERATE_SUMMARY',
@@ -130,10 +140,76 @@ export function PinCreationForm({
       console.error('[WiserPin Popup] ❌ Error generating summary:', error);
 
       let errorMessage = error instanceof Error ? error.message : 'Failed to generate summary';
+
+      // Better error message for connection issues
+      if (errorMessage.includes('Receiving end does not exist')) {
+        errorMessage = 'Please reload this page and try again. The content script needs to initialize.';
+      }
+
       setAiError(errorMessage);
       setSummary(''); // Clear summary on error
     } finally {
       setGeneratingSummary(false);
+    }
+  };
+
+  const suggestCollection = async () => {
+    if (collections.length === 0) {
+      setError('No collections available. Create a collection first.');
+      return;
+    }
+
+    setSuggestingCollection(true);
+    setError(null);
+
+    try {
+      console.debug('[WiserPin Popup] Suggesting collection using Prompt API...');
+
+      // Get active tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        throw new Error('No active tab found');
+      }
+
+      // Check if URL is accessible (content scripts can't run on chrome:// pages)
+      if (tab.url && (tab.url.startsWith('chrome://') || tab.url.startsWith('chrome-extension://'))) {
+        throw new Error('Cannot suggest collections on browser internal pages. Please navigate to a regular webpage.');
+      }
+
+      // Send message to content script to suggest collection
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: 'SUGGEST_COLLECTION',
+        title,
+        url,
+        summary,
+        collections: collections.map(c => ({
+          id: c.id,
+          name: c.name
+        }))
+      });
+
+      if (response.success && response.collectionId) {
+        console.debug('[WiserPin Popup] ✅ Suggested collection:', response.collectionId);
+        const suggested = collections.find(c => c.id === response.collectionId);
+        if (suggested && onCollectionSelected) {
+          // Auto-select the suggested collection
+          onCollectionSelected(response.collectionId, suggested.name);
+        }
+      } else {
+        throw new Error(response.error || 'Failed to suggest collection');
+      }
+    } catch (error) {
+      console.error('[WiserPin Popup] ❌ Error suggesting collection:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to suggest collection';
+
+      // More user-friendly error for connection issues
+      if (errorMessage.includes('Receiving end does not exist')) {
+        setError('Please reload this page to use AI suggestions');
+      } else {
+        setError(errorMessage);
+      }
+    } finally {
+      setSuggestingCollection(false);
     }
   };
 
@@ -154,12 +230,8 @@ export function PinCreationForm({
         return;
       }
 
-      // Check if pin already exists
-      const exists = await checkPinExists(url);
-      if (exists) {
-        setError('This URL is already pinned');
-        return;
-      }
+      // Allow articles to be pinned multiple times (to different collections)
+      // No duplicate check needed
 
       // Use pre-generated summary or try to generate a new one
       let summaryText = summary;
@@ -193,13 +265,14 @@ export function PinCreationForm({
       await addPin(pinInput);
       setSuccess(true);
 
-      // Reset form
-      setTimeout(() => {
-        setUrl('');
-        setTitle('');
-        setSuccess(false);
-        loadCurrentTab();
-      }, 2000);
+      // Don't auto-reset, let user dismiss or navigate
+      // Reset form after user action
+      // setTimeout(() => {
+      //   setUrl('');
+      //   setTitle('');
+      //   setSuccess(false);
+      //   loadCurrentTab();
+      // }, 2000);
     } catch (err) {
       console.error('Failed to create pin:', err);
       setError(err instanceof Error ? err.message : 'Failed to create pin');
@@ -359,18 +432,6 @@ export function PinCreationForm({
           </div>
 
 
-          {success && (
-            <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-300 rounded-lg text-sm flex items-start gap-2">
-              <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <div>
-                <p className="font-medium">Saved successfully!</p>
-                <p className="text-green-700 dark:text-green-400 text-xs mt-1">Your pin has been added to the collection.</p>
-              </div>
-            </div>
-          )}
-
           {error && (
             <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300 rounded-lg text-sm flex items-start gap-2">
               <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
@@ -397,44 +458,87 @@ export function PinCreationForm({
           zIndex: 50
         }}
       >
-        {/* Collection Selector - No Label */}
-        <button
-          onClick={onSelectCollection}
-          className="w-full h-11 px-3 py-2 text-left border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-between mb-2"
-        >
-          {selectedCollectionName ? (
-            <div className="flex items-center gap-2">
-              <div
-                className="w-3 h-3 rounded-full"
-                style={{
-                  backgroundColor: collections.find(c => c.id === selectedCollectionId)?.color || '#3b82f6'
-                }}
-              />
-              <span className="text-sm text-gray-900 dark:text-gray-100">{selectedCollectionName}</span>
+        {success ? (
+          /* Success State - Show pinned message and view collections button */
+          <div className="space-y-3">
+            <div className="flex items-start gap-3 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+              <svg className="w-6 h-6 flex-shrink-0 text-green-600 dark:text-green-400 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-green-800 dark:text-green-300">Page Pinned Successfully!</p>
+                <p className="text-xs text-green-700 dark:text-green-400 mt-1">Saved to {selectedCollectionName}</p>
+              </div>
             </div>
-          ) : (
-            <span className="text-sm text-gray-500 dark:text-gray-400">Select Collection</span>
-          )}
-          <svg className="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </button>
+            <Button
+              onClick={onViewCollections}
+              variant="outline"
+              className="w-full h-11"
+            >
+              View All Collections
+            </Button>
+          </div>
+        ) : (
+          /* Normal State - Show collection selector and save button */
+          <>
+            {/* Collection Selector with AI Suggestion Button */}
+            <div className="flex gap-2 mb-2">
+              <button
+                onClick={onSelectCollection}
+                className="flex-1 h-11 px-3 py-2 text-left border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-between"
+              >
+                {selectedCollectionName ? (
+                  <div className="flex items-center gap-2">
+                    <div
+                      className="w-3 h-3 rounded-full"
+                      style={{
+                        backgroundColor: collections.find(c => c.id === selectedCollectionId)?.color || '#3b82f6'
+                      }}
+                    />
+                    <span className="text-sm text-gray-900 dark:text-gray-100">{selectedCollectionName}</span>
+                  </div>
+                ) : (
+                  <span className="text-sm text-gray-500 dark:text-gray-400">Select Collection</span>
+                )}
+                <svg className="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
 
-        {/* Save Button */}
-        <Button
-          onClick={handleSubmit}
-          disabled={loading || !selectedCollectionId}
-          className="w-full h-12 text-base font-medium"
-        >
-          {loading ? (
-            <span className="flex items-center gap-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              Saving...
-            </span>
-          ) : (
-            'Save to Collection'
-          )}
-        </Button>
+              {/* AI Suggestion Button */}
+              <button
+                onClick={suggestCollection}
+                disabled={suggestingCollection || collections.length === 0}
+                className="h-11 w-11 flex items-center justify-center border border-indigo-300 dark:border-indigo-600 rounded-md bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950 dark:to-purple-950 hover:from-indigo-100 hover:to-purple-100 dark:hover:from-indigo-900 dark:hover:to-purple-900 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="AI Suggest Collection"
+              >
+                {suggestingCollection ? (
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
+                ) : (
+                  <svg className="w-5 h-5 text-indigo-600 dark:text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                )}
+              </button>
+            </div>
+
+            {/* Save Button */}
+            <Button
+              onClick={handleSubmit}
+              disabled={loading || !selectedCollectionId}
+              className="w-full h-12 text-base font-medium"
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Saving...
+                </span>
+              ) : (
+                'Save to Collection'
+              )}
+            </Button>
+          </>
+        )}
       </div>
     </>
   );

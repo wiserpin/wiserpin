@@ -167,6 +167,8 @@ export function App() {
                 collections={collections}
                 onCollectionCreated={handleCollectionCreated}
                 onSelectCollection={handleNavigateToSelectCollection}
+                onCollectionSelected={handleSelectCollection}
+                onViewCollections={() => setView('collections')}
                 selectedCollectionId={selectedCollectionId}
                 selectedCollectionName={selectedCollectionName}
                 aiAvailability={aiAvailability}
