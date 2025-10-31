@@ -43,3 +43,53 @@ declare namespace chrome {
     export function setBadgeText(details: any): Promise<void>;
   }
 }
+
+// Chrome AI Prompt API
+declare namespace chrome.ai {
+  export enum AIModelAvailability {
+    READILY = "readily",
+    AFTER_DOWNLOAD = "after-download",
+    NO = "no"
+  }
+
+  export interface AIModelAvailabilityInfo {
+    available: AIModelAvailability;
+  }
+
+  export interface AILanguageModelParams {
+    defaultTemperature: number;
+    maxTemperature: number;
+    defaultTopK: number;
+    maxTopK: number;
+  }
+
+  export interface AILanguageModelCreateOptions {
+    signal?: AbortSignal;
+    systemPrompt?: string;
+    initialPrompts?: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    topK?: number;
+    temperature?: number;
+  }
+
+  export interface AILanguageModelPromptOptions {
+    signal?: AbortSignal;
+  }
+
+  export interface AILanguageModelSession {
+    prompt(input: string, options?: AILanguageModelPromptOptions): Promise<string>;
+    promptStreaming(input: string, options?: AILanguageModelPromptOptions): ReadableStream<string>;
+    clone(): Promise<AILanguageModelSession>;
+    destroy(): void;
+    tokensSoFar: number;
+    maxTokens: number;
+    tokensLeft: number;
+  }
+
+  export interface AILanguageModel {
+    availability(): Promise<AIModelAvailabilityInfo>;
+    params(): Promise<AILanguageModelParams>;
+    create(options?: AILanguageModelCreateOptions): Promise<AILanguageModelSession>;
+  }
+
+  export const languageModel: AILanguageModel;
+}

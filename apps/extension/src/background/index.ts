@@ -3,22 +3,22 @@
  * Handles extension lifecycle, context menu, and message passing
  */
 
-console.log('WiserPin background service worker loaded');
+console.debug('WiserPin background service worker loaded');
 
 // Extension installation handler
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason === 'install') {
-    console.log('WiserPin extension installed');
+    console.debug('WiserPin extension installed');
     // Open options page on first install
     chrome.runtime.openOptionsPage();
   } else if (details.reason === 'update') {
-    console.log('WiserPin extension updated');
+    console.debug('WiserPin extension updated');
   }
 });
 
 // Message handler for communication between popup, content scripts, and background
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  console.log('Background received message:', message);
+  console.debug('Background received message:', message);
 
   // Handle different message types
   switch (message.type) {
@@ -43,11 +43,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 // Tab update listener (for future metadata extraction)
 chrome.tabs.onUpdated.addListener((_tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url) {
-    console.log('Tab loaded:', tab.url);
+    console.debug('Tab loaded:', tab.url);
   }
 });
 
 // Keep service worker alive
 chrome.runtime.onStartup.addListener(() => {
-  console.log('WiserPin service worker started');
+  console.debug('WiserPin service worker started');
 });

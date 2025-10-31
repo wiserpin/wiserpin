@@ -21,13 +21,13 @@ describe('createSummarizer', () => {
 });
 
 describe('getDefaultSummarizer', () => {
-  it('should return mock summarizer', () => {
-    const summarizer = getDefaultSummarizer();
+  it('should return mock summarizer', async () => {
+    const summarizer = await getDefaultSummarizer();
     expect(summarizer).toBeInstanceOf(MockSummarizer);
   });
 
   it('should return functional summarizer', async () => {
-    const summarizer = getDefaultSummarizer();
+    const summarizer = await getDefaultSummarizer();
     const result = await summarizer.summarize({ title: 'Test' });
 
     expect(result.summary).toBeTruthy();

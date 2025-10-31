@@ -3,7 +3,7 @@
  * Injected into web pages for metadata extraction and page interaction
  */
 
-console.log('WiserPin content script loaded');
+console.debug('WiserPin content script loaded');
 
 /**
  * Extract page metadata for pin creation
@@ -60,13 +60,72 @@ export function extractPageMetadata() {
 
 // Listen for messages from popup or background
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  console.log('Content script received message:', message);
+  console.debug('Content script received message:', message);
 
   switch (message.type) {
     case 'EXTRACT_METADATA':
       const metadata = extractPageMetadata();
       sendResponse({ metadata });
       break;
+
+    case 'GENERATE_SUMMARY':
+      // Run in async context since we need to await
+      (async () => {
+        try {
+          console.debug('[WiserPin Content] Generating summary with Summarizer API...');
+          console.debug('[WiserPin Content] Input:', message.title, message.url);
+
+          // Check if Summarizer API is available
+          if (typeof (window as any).Summarizer === 'undefined') {
+            throw new Error('Summarizer API not available. Please enable chrome://flags/#summarization-api-for-gemini-nano');
+          }
+
+          // Create session with monitor callback for download progress
+          const session = await (window as any).Summarizer.create({
+            type: 'tldr',
+            format: 'plain-text',
+            length: 'medium',
+            monitor(m: any) {
+              console.debug('[WiserPin Content] Download monitor attached');
+              m.addEventListener('downloadprogress', (e: any) => {
+                const progress = e.loaded || 0;
+                const percent = Math.round(progress * 100);
+                console.debug(`[WiserPin Content] Download progress: ${percent}%`);
+
+                // Send progress update to popup
+                chrome.runtime.sendMessage({
+                  type: 'DOWNLOAD_PROGRESS',
+                  progress: percent
+                }).catch(() => {
+                  // Ignore if popup is closed
+                });
+              });
+            },
+          });
+
+          console.debug('[WiserPin Content] Session created, generating summary...');
+
+          // Generate summary
+          const prompt = `Please provide a concise summary (maximum 200 characters) for the following web page:\n\nTitle: ${message.title}\nURL: ${message.url}\n\nProvide only the summary text without any preamble or additional commentary.`;
+          const summary = await session.summarize(prompt);
+
+          console.debug('[WiserPin Content] ✅ Summary generated:', summary);
+
+          // Clean up
+          if (session?.destroy) {
+            session.destroy();
+          }
+
+          sendResponse({ success: true, summary });
+        } catch (error) {
+          console.error('[WiserPin Content] ❌ Error generating summary:', error);
+          sendResponse({
+            success: false,
+            error: error instanceof Error ? error.message : 'Failed to generate summary'
+          });
+        }
+      })();
+      return true; // Keep message channel open for async response
 
     case 'PING':
       sendResponse({ type: 'PONG', from: 'content' });

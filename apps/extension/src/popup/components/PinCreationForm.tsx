@@ -13,6 +13,13 @@ interface PinCreationFormProps {
   onSelectCollection?: () => void;
   selectedCollectionId?: string;
   selectedCollectionName?: string;
+  aiAvailability: string | null;
+  summary: string;
+  setSummary: (summary: string) => void;
+  generatingSummary: boolean;
+  setGeneratingSummary: (generating: boolean) => void;
+  aiError: string | null;
+  setAiError: (error: string | null) => void;
 }
 
 export function PinCreationForm({
@@ -20,6 +27,13 @@ export function PinCreationForm({
   onSelectCollection,
   selectedCollectionId = '',
   selectedCollectionName = '',
+  aiAvailability,
+  summary,
+  setSummary,
+  generatingSummary,
+  setGeneratingSummary,
+  aiError,
+  setAiError,
 }: PinCreationFormProps) {
   const [url, setUrl] = useState('');
   const [title, setTitle] = useState('');
@@ -57,11 +71,69 @@ export function PinCreationForm({
             console.error('Failed to extract metadata:', error);
           }
         }
+
+        // Don't auto-generate - requires user activation (button click)
+        // User will click "Generate Summary" button
       }
     } catch (error) {
       console.error('Failed to get current tab:', error);
     } finally {
       setLoadingMetadata(false);
+    }
+  };
+
+  const generateSummary = async (pageUrl: string, pageTitle: string) => {
+    setGeneratingSummary(true);
+    setAiError(null);
+    try {
+      console.debug('[WiserPin Popup] Requesting summary from content script...');
+
+      // Show initial status
+      if (aiAvailability === 'downloadable' || aiAvailability === 'after-download') {
+        setSummary('Downloading AI model... 0%');
+      } else {
+        setSummary('Generating summary...');
+      }
+
+      // Listen for download progress messages
+      const progressListener = (message: any) => {
+        if (message.type === 'DOWNLOAD_PROGRESS') {
+          console.debug(`[WiserPin Popup] Download progress: ${message.progress}%`);
+          setSummary(`Downloading AI model... ${message.progress}%`);
+        }
+      };
+      chrome.runtime.onMessage.addListener(progressListener);
+
+      // Get active tab
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) {
+        throw new Error('No active tab found');
+      }
+
+      // Send message to content script to generate summary
+      const response = await chrome.tabs.sendMessage(tab.id, {
+        type: 'GENERATE_SUMMARY',
+        title: pageTitle,
+        url: pageUrl,
+      });
+
+      // Remove progress listener
+      chrome.runtime.onMessage.removeListener(progressListener);
+
+      if (response.success) {
+        console.debug('[WiserPin Popup] ✅ Summary received:', response.summary);
+        setSummary(response.summary);
+      } else {
+        throw new Error(response.error || 'Failed to generate summary');
+      }
+    } catch (error) {
+      console.error('[WiserPin Popup] ❌ Error generating summary:', error);
+
+      let errorMessage = error instanceof Error ? error.message : 'Failed to generate summary';
+      setAiError(errorMessage);
+      setSummary(''); // Clear summary on error
+    } finally {
+      setGeneratingSummary(false);
     }
   };
 
@@ -89,12 +161,21 @@ export function PinCreationForm({
         return;
       }
 
-      // Generate summary
-      const summarizer = getDefaultSummarizer();
-      const summaryResult = await summarizer.summarize({
-        title,
-        url,
-      });
+      // Use pre-generated summary or try to generate a new one
+      let summaryText = summary;
+      if (!summaryText) {
+        try {
+          const summarizer = await getDefaultSummarizer();
+          const summaryResult = await summarizer.summarize({
+            title,
+            url,
+          });
+          summaryText = summaryResult.summary;
+        } catch (aiError) {
+          console.warn('[WiserPin] Could not generate summary, saving without it');
+          summaryText = `Saved from: ${title}`;
+        }
+      }
 
       // Create pin
       const pinInput: CreatePinInput = {
@@ -104,8 +185,8 @@ export function PinCreationForm({
           title: title || url,
         },
         summary: {
-          text: summaryResult.summary,
-          createdAt: summaryResult.generatedAt,
+          text: summaryText,
+          createdAt: new Date().toISOString(),
         },
       };
 
@@ -163,7 +244,7 @@ export function PinCreationForm({
   return (
     <>
       {/* Scrollable Content */}
-      <div style={{ paddingBottom: '88px' }}>
+      <div style={{ paddingBottom: '200px' }}>
           {/* Page Preview Card */}
           <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white dark:bg-gray-800 shadow-sm" style={{ marginBottom: '32px' }}>
             {ogImage && (
@@ -193,32 +274,90 @@ export function PinCreationForm({
             </div>
           </div>
 
+          {/* AI Summary Section */}
           <div style={{ marginBottom: '24px' }}>
-            <Label htmlFor="collection" className="text-sm font-medium" style={{ display: 'block', marginBottom: '12px' }}>
-              Save to Collection
-            </Label>
-            <button
-              onClick={onSelectCollection}
-              className="w-full h-11 px-3 py-2 text-left border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-between"
-            >
-              {selectedCollectionName ? (
-                <div className="flex items-center gap-2">
-                  <div
-                    className="w-3 h-3 rounded-full"
-                    style={{
-                      backgroundColor: collections.find(c => c.id === selectedCollectionId)?.color || '#3b82f6'
-                    }}
-                  />
-                  <span className="text-sm text-gray-900 dark:text-gray-100">{selectedCollectionName}</span>
+            <div className="flex items-center justify-between mb-3">
+              <Label className="text-sm font-medium">
+                AI Summary
+              </Label>
+              {!summary && !generatingSummary && !aiError && (
+                <Button
+                  onClick={() => generateSummary(url, title)}
+                  size="sm"
+                  variant="outline"
+                  className="h-8"
+                >
+                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                  Generate Summary
+                </Button>
+              )}
+            </div>
+            <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950 dark:to-purple-950">
+              {generatingSummary ? (
+                <div className="flex items-center gap-3">
+                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-indigo-600"></div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">Generating summary with Chrome AI...</p>
+                </div>
+              ) : aiError ? (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-amber-600 dark:text-amber-400 mb-1">Chrome AI Not Available</p>
+                      <div className="mb-3 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs">
+                        <p className="font-mono text-gray-700 dark:text-gray-300">
+                          Availability: <span className="font-semibold">{aiAvailability || 'unknown'}</span>
+                        </p>
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mb-3">{aiError}</p>
+                      <div className="bg-white dark:bg-gray-900 rounded-md p-3 border border-gray-200 dark:border-gray-700">
+                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2">📋 Check the browser console (F12) for detailed logs</p>
+                        <p className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-2 mt-3">To enable Chrome AI:</p>
+                        <ol className="text-xs text-gray-600 dark:text-gray-400 space-y-1 list-decimal list-inside">
+                          <li>Open <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">chrome://flags/#optimization-guide-on-device-model</code></li>
+                          <li>Set "Enabled BypassPerfRequirement"</li>
+                          <li>Open <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">chrome://flags/#prompt-api-for-gemini-nano</code></li>
+                          <li>Set "Enabled"</li>
+                          <li>Restart Chrome completely</li>
+                          <li>Check <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">chrome://components/</code> for "Optimization Guide On Device Model"</li>
+                        </ol>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : summary ? (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <svg className="w-4 h-4 text-indigo-600 dark:text-indigo-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400">
+                      Generated by Chrome AI (Gemini Nano)
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{summary}</p>
                 </div>
               ) : (
-                <span className="text-sm text-gray-500 dark:text-gray-400">Choose a collection...</span>
+                <div className="text-center py-6">
+                  <svg className="w-12 h-12 mx-auto mb-3 text-gray-400 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                  </svg>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Click "Generate Summary" to create an AI summary</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">Powered by Chrome AI (Gemini Nano)</p>
+                  {aiAvailability === 'after-download' && (
+                    <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded text-xs text-blue-600 dark:text-blue-400">
+                      📥 Chrome is downloading the AI model in the background. This may take a few minutes. Check <code className="bg-blue-100 dark:bg-blue-800 px-1 rounded">chrome://on-device-internals</code> for progress.
+                    </div>
+                  )}
+                </div>
               )}
-              <svg className="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
+            </div>
           </div>
+
 
           {success && (
             <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-300 rounded-lg text-sm flex items-start gap-2">
@@ -245,7 +384,7 @@ export function PinCreationForm({
           )}
       </div>
 
-      {/* Fixed Footer Button */}
+      {/* Fixed Footer Buttons */}
       <div
         className="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700"
         style={{
@@ -258,6 +397,30 @@ export function PinCreationForm({
           zIndex: 50
         }}
       >
+        {/* Collection Selector - No Label */}
+        <button
+          onClick={onSelectCollection}
+          className="w-full h-11 px-3 py-2 text-left border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors flex items-center justify-between mb-2"
+        >
+          {selectedCollectionName ? (
+            <div className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{
+                  backgroundColor: collections.find(c => c.id === selectedCollectionId)?.color || '#3b82f6'
+                }}
+              />
+              <span className="text-sm text-gray-900 dark:text-gray-100">{selectedCollectionName}</span>
+            </div>
+          ) : (
+            <span className="text-sm text-gray-500 dark:text-gray-400">Select Collection</span>
+          )}
+          <svg className="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+
+        {/* Save Button */}
         <Button
           onClick={handleSubmit}
           disabled={loading || !selectedCollectionId}

@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { Collection } from '@wiserpin/core';
 import { listCollections } from '@wiserpin/storage';
 import { Button } from '@wiserpin/ui';
+import { ChromeAISummarizer, type ChromeAIAvailability } from '@wiserpin/prompts';
 import { PinCreationForm } from './components/PinCreationForm';
 import { CollectionList } from './components/CollectionList';
 import { CreateCollectionForm } from './components/CreateCollectionForm';
@@ -15,9 +16,52 @@ export function App() {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>('');
   const [selectedCollectionName, setSelectedCollectionName] = useState<string>('');
 
+  // Chrome AI state
+  const [aiAvailability, setAiAvailability] = useState<ChromeAIAvailability | null>(null);
+
+  // Summary state (lifted from PinCreationForm to persist across view changes)
+  const [summary, setSummary] = useState('');
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+
+  // Scroll position state to preserve scroll when navigating between views
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
+    checkAIAvailability();
     loadCollections();
   }, []);
+
+  // Restore scroll when returning to create-pin view
+  useEffect(() => {
+    if (view === 'create-pin' && scrollContainerRef.current && scrollPosition > 0) {
+      console.debug('[App] Restoring scroll to:', scrollPosition);
+      console.debug('[App] Current scrollTop:', scrollContainerRef.current.scrollTop);
+      console.debug('[App] ScrollHeight:', scrollContainerRef.current.scrollHeight);
+      console.debug('[App] ClientHeight:', scrollContainerRef.current.clientHeight);
+
+      // Use double requestAnimationFrame to ensure DOM is fully rendered
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (scrollContainerRef.current) {
+            console.debug('[App] Actually setting scrollTop to:', scrollPosition);
+            scrollContainerRef.current.scrollTop = scrollPosition;
+            console.debug('[App] After set, scrollTop is:', scrollContainerRef.current.scrollTop);
+          }
+        });
+      });
+    }
+  }, [view]);
+
+  const checkAIAvailability = async () => {
+    const availability = await ChromeAISummarizer.checkAvailability();
+    setAiAvailability(availability);
+
+    // Don't show download screen - handle download inline like the demo
+    // The model will download in background when user clicks "Generate Summary"
+    console.debug('[WiserPin App] AI availability:', availability);
+  };
 
   const loadCollections = async () => {
     try {
@@ -41,6 +85,16 @@ export function App() {
     setView('create-pin');
   };
 
+  const handleNavigateToSelectCollection = () => {
+    // Save scroll position from the App container
+    if (scrollContainerRef.current) {
+      const scroll = scrollContainerRef.current.scrollTop;
+      console.debug('[App] Saving scroll position:', scroll);
+      setScrollPosition(scroll);
+    }
+    setView('select-collection');
+  };
+
   const handleCollectionCreatedFromSelector = async () => {
     await loadCollections();
     setView('select-collection');
@@ -48,14 +102,14 @@ export function App() {
 
   if (loading) {
     return (
-      <div className="w-[400px] min-w-[400px] h-[600px] p-4 flex items-center justify-center">
+      <div className="w-[400px] min-w-[400px] h-[680px] p-4 flex items-center justify-center">
         <p className="text-gray-500">Loading...</p>
       </div>
     );
   }
 
   return (
-    <div className="w-[400px] min-w-[400px] h-[600px] flex flex-col bg-white dark:bg-gray-900">
+    <div className="w-[400px] min-w-[400px] h-[680px] flex flex-col bg-white dark:bg-gray-900">
       {/* Fixed Header */}
       <div className="flex-shrink-0 border-b px-4 py-3 bg-indigo-600 dark:bg-indigo-700 text-white flex items-center justify-between">
         <div>
@@ -89,7 +143,9 @@ export function App() {
       </div>
 
       {/* Scrollable Content */}
-      <div className="flex-1 overflow-y-auto overscroll-contain"
+      <div
+           ref={scrollContainerRef}
+           className="flex-1 overflow-y-auto overscroll-contain"
            style={{
              scrollbarWidth: 'thin',
              scrollbarColor: '#cbd5e1 #f1f5f9'
@@ -110,9 +166,16 @@ export function App() {
               <PinCreationForm
                 collections={collections}
                 onCollectionCreated={handleCollectionCreated}
-                onSelectCollection={() => setView('select-collection')}
+                onSelectCollection={handleNavigateToSelectCollection}
                 selectedCollectionId={selectedCollectionId}
                 selectedCollectionName={selectedCollectionName}
+                aiAvailability={aiAvailability}
+                summary={summary}
+                setSummary={setSummary}
+                generatingSummary={generatingSummary}
+                setGeneratingSummary={setGeneratingSummary}
+                aiError={aiError}
+                setAiError={setAiError}
               />
             )}
             {view === 'collections' && (

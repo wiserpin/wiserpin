@@ -47,3 +47,8 @@ export {
   SelectScrollDownButton,
 } from './components/select';
 export { Switch } from './components/switch';
+export { Progress } from './components/progress';
+export {
+  ChromeAIDownloadPage,
+  type ChromeAIDownloadProps,
+} from './components/chrome-ai-download';
