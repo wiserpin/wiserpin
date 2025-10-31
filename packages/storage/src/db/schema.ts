@@ -119,3 +119,19 @@ export function closeDB(): void {
     dbInstance = null;
   }
 }
+
+/**
+ * Clear all data from the database
+ */
+export async function clearAllData(): Promise<void> {
+  const db = await getDB();
+  const tx = db.transaction([STORES.COLLECTIONS, STORES.PINS], 'readwrite');
+
+  await Promise.all([
+    tx.objectStore(STORES.COLLECTIONS).clear(),
+    tx.objectStore(STORES.PINS).clear(),
+    tx.done,
+  ]);
+
+  console.log('[WiserPin DB] All data cleared');
+}

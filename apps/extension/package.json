@@ -23,10 +23,13 @@
     "vite": "^7.1.12"
   },
   "dependencies": {
+    "@clerk/chrome-extension": "^2.7.10",
+    "@clerk/clerk-react": "^5.17.4",
     "@wiserpin/core": "workspace:^",
     "@wiserpin/prompts": "workspace:^",
     "@wiserpin/storage": "workspace:^",
     "@wiserpin/ui": "workspace:^",
+    "lucide-react": "^0.552.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   }

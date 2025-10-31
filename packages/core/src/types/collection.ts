@@ -27,7 +27,7 @@ export interface Collection {
 /**
  * Input type for creating a new collection
  */
-export type CreateCollectionInput = Omit<Collection, 'id' | 'createdAt' | 'updatedAt'>;
+export type CreateCollectionInput = Omit<Collection, 'id' | 'createdAt' | 'updatedAt'> & { id?: string };
 
 /**
  * Input type for updating a collection

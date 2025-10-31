@@ -31,10 +31,16 @@
   "permissions": [
     "storage",
     "activeTab",
-    "tabs"
+    "tabs",
+    "cookies"
   ],
   "host_permissions": [
     "<all_urls>"
   ],
+  "externally_connectable": {
+    "matches": [
+      "http://localhost:3000/*"
+    ]
+  },
   "options_page": "src/options/index.html"
 }

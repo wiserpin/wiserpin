@@ -3,10 +3,10 @@ import { getDB, STORES } from '../db/schema';
 import { NotFoundError, TransactionError } from '../errors/storage-error';
 
 /**
- * Generate a unique ID for a collection
+ * Generate a unique ID for a collection (UUID v4)
  */
 function generateId(): string {
-  return `col_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID();
 }
 
 /**
@@ -21,7 +21,7 @@ export async function addCollection(
 
     const collection: Collection = {
       ...input,
-      id: generateId(),
+      id: input.id || generateId(), // Use provided ID or generate new one
       createdAt: now,
       updatedAt: now,
     };

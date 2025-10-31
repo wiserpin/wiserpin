@@ -29,7 +29,7 @@ export interface Pin {
 /**
  * Input type for creating a new pin
  */
-export type CreatePinInput = Omit<Pin, 'id' | 'createdAt'>;
+export type CreatePinInput = Omit<Pin, 'id' | 'createdAt'> & { id?: string };
 
 /**
  * Input type for updating a pin

@@ -5,7 +5,7 @@
  */
 
 // Database initialization
-export { initDB, getDB, closeDB, DB_NAME, DB_VERSION } from './db/schema';
+export { initDB, getDB, closeDB, clearAllData, DB_NAME, DB_VERSION } from './db/schema';
 
 // Collection operations
 export {

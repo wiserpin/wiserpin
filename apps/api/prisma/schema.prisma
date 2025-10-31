@@ -1,0 +1,59 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id          String       @id // Clerk user ID
+  email       String?      @unique
+  firstName   String?
+  lastName    String?
+  imageUrl    String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  collections Collection[]
+  pins        Pin[]
+
+  @@map("users")
+}
+
+model Collection {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  color       String?
+  icon        String?
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pins        Pin[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@map("collections")
+}
+
+model Pin {
+  id           String      @id @default(uuid())
+  url          String
+  title        String
+  description  String?
+  imageUrl     String?
+  favicon      String?
+  tags         String[]
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collectionId String?
+  collection   Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@unique([userId, url])
+  @@index([userId])
+  @@index([collectionId])
+  @@map("pins")
+}

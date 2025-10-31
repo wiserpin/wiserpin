@@ -2,8 +2,11 @@
  * User settings for the extension
  */
 export interface Settings {
-  /** Whether to automatically generate summaries when pinning pages */
-  autoSummarize: boolean;
+  /** Whether to automatically generate summaries when opening popup */
+  autoGenerateSummary: boolean;
+
+  /** Whether to automatically suggest collection when opening popup */
+  autoSuggestCollection: boolean;
 
   /** Theme preference (for future) */
   theme?: 'light' | 'dark' | 'system';
@@ -16,6 +19,7 @@ export interface Settings {
  * Default settings values
  */
 export const DEFAULT_SETTINGS: Settings = {
-  autoSummarize: true,
+  autoGenerateSummary: false,
+  autoSuggestCollection: false,
   theme: 'system',
 };

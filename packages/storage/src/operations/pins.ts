@@ -6,10 +6,10 @@ import {
 } from '../errors/storage-error';
 
 /**
- * Generate a unique ID for a pin
+ * Generate a unique ID for a pin (UUID v4)
  */
 function generateId(): string {
-  return `pin_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID();
 }
 
 /**
@@ -36,7 +36,7 @@ export async function addPin(input: CreatePinInput): Promise<string> {
 
     const pin: Pin = {
       ...input,
-      id: generateId(),
+      id: input.id || generateId(), // Use provided ID or generate new one
       createdAt: now,
     };
 

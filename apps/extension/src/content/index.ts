@@ -200,9 +200,39 @@ Which collection ID best matches this page based on its goal? Respond with ONLY 
           if (collectionId) {
             sendResponse({ success: true, collectionId });
           } else {
-            // Default to first collection if AI can't decide
-            console.debug('[WiserPin Content] Could not parse AI response, using first collection');
-            sendResponse({ success: true, collectionId: message.collections[0].id });
+            // Fallback: Try keyword matching based on goals
+            console.debug('[WiserPin Content] Could not parse AI response, trying keyword matching fallback');
+
+            const pageText = `${message.title} ${message.url} ${message.summary || ''}`.toLowerCase();
+            let bestMatch = null;
+            let bestScore = 0;
+
+            for (const c of message.collections) {
+              if (c.goal) {
+                // Extract keywords from goal (remove common words)
+                const keywords = c.goal.toLowerCase()
+                  .split(/\s+/)
+                  .filter((word: string) => word.length > 3 && !['this', 'that', 'with', 'from', 'have', 'will'].includes(word));
+
+                // Count keyword matches
+                let score = 0;
+                for (const keyword of keywords) {
+                  if (pageText.includes(keyword)) {
+                    score++;
+                  }
+                }
+
+                if (score > bestScore) {
+                  bestScore = score;
+                  bestMatch = c.id;
+                }
+              }
+            }
+
+            // If keyword matching found a match, use it; otherwise use first collection
+            const finalId = bestMatch || message.collections[0].id;
+            console.debug(`[WiserPin Content] Fallback selected: ${finalId} (score: ${bestScore})`);
+            sendResponse({ success: true, collectionId: finalId });
           }
         } catch (error) {
           console.error('[WiserPin Content] ❌ Error suggesting collection:', error);
