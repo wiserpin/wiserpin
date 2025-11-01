@@ -44,11 +44,36 @@ export class PinsController {
     required: false,
     description: "Filter by collection ID",
   })
+  @ApiQuery({
+    name: "search",
+    required: false,
+    description: "Search pins by title, description, or URL",
+  })
+  @ApiQuery({
+    name: "page",
+    required: false,
+    description: "Page number (default: 1)",
+  })
+  @ApiQuery({
+    name: "limit",
+    required: false,
+    description: "Items per page (default: 12)",
+  })
   findAll(
     @CurrentUser() user: { userId: string },
     @Query("collectionId") collectionId?: string,
+    @Query("search") search?: string,
+    @Query("page") page?: string,
+    @Query("limit") limit?: string,
   ) {
-    return this.pinsService.findAll(user.userId, collectionId);
+    const pageNum = page ? parseInt(page, 10) : 1;
+    const limitNum = limit ? parseInt(limit, 10) : 12;
+    return this.pinsService.findAll(user.userId, {
+      collectionId,
+      search,
+      page: pageNum,
+      limit: limitNum,
+    });
   }
 
   @Get(":id")

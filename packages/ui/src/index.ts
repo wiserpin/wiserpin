@@ -50,6 +50,21 @@ export { Switch } from './components/switch';
 export { Progress } from './components/progress';
 export { Textarea } from './components/textarea';
 export {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from './components/tabs';
+export {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from './components/pagination';
+export {
   ChromeAIDownloadPage,
   type ChromeAIDownloadProps,
 } from './components/chrome-ai-download';

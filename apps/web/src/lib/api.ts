@@ -50,9 +50,28 @@ class ApiClient {
   }
 
   // Pins
-  async getPins(collectionId?: string) {
-    const query = collectionId ? `?collectionId=${collectionId}` : '';
-    return this.request<any[]>(`/pins${query}`);
+  async getPins(params?: {
+    collectionId?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const queryParams = new URLSearchParams();
+    if (params?.collectionId) queryParams.append('collectionId', params.collectionId);
+    if (params?.search) queryParams.append('search', params.search);
+    if (params?.page) queryParams.append('page', params.page.toString());
+    if (params?.limit) queryParams.append('limit', params.limit.toString());
+
+    const query = queryParams.toString() ? `?${queryParams.toString()}` : '';
+    return this.request<{
+      data: any[];
+      meta: {
+        total: number;
+        page: number;
+        limit: number;
+        totalPages: number;
+      };
+    }>(`/pins${query}`);
   }
 
   async getPin(id: string) {
@@ -105,6 +124,14 @@ class ApiClient {
   async deleteCollection(id: string) {
     return this.request<void>(`/collections/${id}`, {
       method: 'DELETE',
+    });
+  }
+
+  // AI / Summarization
+  async summarizeContent(data: { content: string; title?: string }) {
+    return this.request<{ summary: string; category?: string }>('/ai/summarize', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   }
 }

@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { UserButton, useUser } from '@clerk/clerk-react';
-import { Home, FolderOpen, Pin, Settings, type LucideIcon } from 'lucide-react';
+import { FolderOpen, Pin, Settings, type LucideIcon } from 'lucide-react';
 import { ThemeToggle } from '../theme-toggle';
 
 interface NavigationItem {
@@ -10,9 +10,8 @@ interface NavigationItem {
 }
 
 const navigation: NavigationItem[] = [
-  { name: 'Dashboard', href: '/', icon: Home },
+  { name: 'Pins', href: '/', icon: Pin },
   { name: 'Collections', href: '/collections', icon: FolderOpen },
-  { name: 'Pins', href: '/pins', icon: Pin },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

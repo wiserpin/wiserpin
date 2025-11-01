@@ -13,7 +13,6 @@ export class CreatePinDto {
 
   @ApiProperty({ description: 'Pin title', example: 'Example Website' })
   @IsString()
-  @MaxLength(200)
   title: string;
 
   @ApiPropertyOptional({ description: 'Pin description' })

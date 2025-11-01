@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { SignIn, SignUp, useAuth } from '@clerk/clerk-react';
 import { DashboardLayout } from './components/layouts/DashboardLayout';
-import { HomePage } from './pages/HomePage';
 import { CollectionsPage } from './pages/CollectionsPage';
 import { PinsPage } from './pages/PinsPage';
 import { SettingsPage } from './pages/SettingsPage';
@@ -69,9 +68,8 @@ function App() {
             </ProtectedRoute>
           }
         >
-          <Route index element={<HomePage />} />
+          <Route index element={<PinsPage />} />
           <Route path="collections" element={<CollectionsPage />} />
-          <Route path="pins" element={<PinsPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
 

@@ -1,8 +1,16 @@
 import { useUser } from '@clerk/clerk-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@wiserpin/ui';
+import { useEffect, useState } from 'react';
 
 export function SettingsPage() {
   const { user } = useUser();
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Get last sync time from localStorage
+    const syncTime = localStorage.getItem('lastSyncTime');
+    setLastSyncTime(syncTime);
+  }, []);
 
   return (
     <div className="p-8">
@@ -35,39 +43,28 @@ export function SettingsPage() {
                   {user?.primaryEmailAddress?.emailAddress}
                 </p>
               </div>
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">User ID</label>
-                <p className="text-foreground text-xs font-mono">{user?.id}</p>
-              </div>
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Sync Settings</CardTitle>
+            <CardTitle>Sync Status</CardTitle>
             <CardDescription>
-              Configure how your pins sync across devices
+              Your pins are automatically synced across all devices
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-muted-foreground">
-              Cloud sync features are coming soon. Your pins will automatically sync across all your devices.
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Extension Settings</CardTitle>
-            <CardDescription>
-              Configure the browser extension behavior
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-muted-foreground">
-              Extension settings can be managed from the browser extension options page.
-            </p>
+            <div className="space-y-2">
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Last Sync</label>
+                <p className="text-foreground">
+                  {lastSyncTime
+                    ? new Date(lastSyncTime).toLocaleString()
+                    : 'Never synced'}
+                </p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

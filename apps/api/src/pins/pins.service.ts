@@ -91,17 +91,56 @@ export class PinsService {
     });
   }
 
-  async findAll(userId: string, collectionId?: string) {
-    return this.prisma.pin.findMany({
-      where: {
-        userId,
-        ...(collectionId && { collectionId }),
-      },
+  async findAll(
+    userId: string,
+    options?: {
+      collectionId?: string;
+      search?: string;
+      page?: number;
+      limit?: number;
+    },
+  ) {
+    const { collectionId, search, page = 1, limit = 12 } = options || {};
+    const skip = (page - 1) * limit;
+
+    // Build where clause
+    const where: any = {
+      userId,
+      ...(collectionId && { collectionId }),
+    };
+
+    // Add search filter if provided
+    if (search) {
+      where.OR = [
+        { title: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+        { url: { contains: search, mode: "insensitive" } },
+      ];
+    }
+
+    // Get total count for pagination
+    const total = await this.prisma.pin.count({ where });
+
+    // Get pins with pagination
+    const pins = await this.prisma.pin.findMany({
+      where,
       include: {
         collection: true,
       },
       orderBy: { createdAt: "desc" },
+      skip,
+      take: limit,
     });
+
+    return {
+      data: pins,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
   }
 
   async findOne(userId: string, id: string) {

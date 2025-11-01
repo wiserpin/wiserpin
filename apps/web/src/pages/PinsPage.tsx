@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Input, Label, Textarea, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@wiserpin/ui';
-import { Pin, ExternalLink, Trash2, Loader2, Plus, Edit } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, Button, Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, Input, Label, Textarea, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tabs, TabsList, TabsTrigger, TabsContent, Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationPrevious, PaginationNext, PaginationEllipsis } from '@wiserpin/ui';
+import { Pin, ExternalLink, Trash2, Loader2, Plus, Edit, Sparkles, Search, Image } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuth } from '@clerk/clerk-react';
+import { summarizerService } from '../lib/summarizer';
 
 interface PinData {
   id: string;
@@ -22,6 +23,7 @@ interface PinData {
 interface CollectionData {
   id: string;
   name: string;
+  description?: string;
   color?: string;
 }
 
@@ -31,6 +33,12 @@ export function PinsPage() {
   const [collections, setCollections] = useState<CollectionData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [selectedCollection, setSelectedCollection] = useState<string>('all');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalPins, setTotalPins] = useState(0);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPin, setEditingPin] = useState<PinData | null>(null);
   const [formData, setFormData] = useState({
@@ -41,6 +49,8 @@ export function PinsPage() {
     collectionId: '',
   });
   const [fetchingMetadata, setFetchingMetadata] = useState(false);
+  const [generatingSummary, setGeneratingSummary] = useState(false);
+  const [suggestingCollection, setSuggestingCollection] = useState(false);
   const [urlDebounceTimer, setUrlDebounceTimer] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -55,17 +65,38 @@ export function PinsPage() {
     });
 
     if (isSignedIn) {
-      loadPins();
       loadCollections();
     }
   }, [isSignedIn, getToken]);
+
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+    }, 300); // 300ms delay
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    if (isSignedIn) {
+      loadPins();
+    }
+  }, [isSignedIn, selectedCollection, debouncedSearchQuery, currentPage]);
 
   const loadPins = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await api.getPins();
-      setPins(data);
+      const result = await api.getPins({
+        collectionId: selectedCollection === 'all' ? undefined : selectedCollection,
+        search: debouncedSearchQuery || undefined,
+        page: currentPage,
+        limit: 12,
+      });
+      setPins(result.data);
+      setTotalPages(result.meta.totalPages);
+      setTotalPins(result.meta.total);
     } catch (err) {
       console.error('Failed to load pins:', err);
       setError(err instanceof Error ? err.message : 'Failed to load pins');
@@ -227,11 +258,77 @@ export function PinsPage() {
     }
   };
 
+  const handleGenerateSummary = async () => {
+    if (!formData.url.trim()) {
+      alert('Please enter a URL first');
+      return;
+    }
+
+    setGeneratingSummary(true);
+    try {
+      const result = await summarizerService.summarizeUrl(formData.url);
+
+      setFormData(prev => ({
+        ...prev,
+        description: result.summary,
+      }));
+
+      // Show user which AI was used
+      const aiType = result.usedBrowserAI ? 'Browser AI (Gemini Nano)' : 'Cloud AI (Gemini)';
+      console.log(`Summary generated using ${aiType}`);
+    } catch (error) {
+      console.error('Failed to generate summary:', error);
+      alert(error instanceof Error ? error.message : 'Failed to generate summary');
+    } finally {
+      setGeneratingSummary(false);
+    }
+  };
+
+  const handleSuggestCollection = async () => {
+    if (collections.length === 0) {
+      alert('No collections available. Create a collection first.');
+      return;
+    }
+
+    if (!formData.url.trim() || !formData.title.trim()) {
+      alert('Please enter a URL first and wait for metadata to load');
+      return;
+    }
+
+    setSuggestingCollection(true);
+    try {
+      const suggestedId = await summarizerService.suggestCollection({
+        title: formData.title,
+        url: formData.url,
+        summary: formData.description,
+        collections: collections,
+      });
+
+      if (suggestedId) {
+        setFormData(prev => ({
+          ...prev,
+          collectionId: suggestedId,
+        }));
+        console.log('Collection suggested:', suggestedId);
+      }
+    } catch (error) {
+      console.error('Failed to suggest collection:', error);
+      alert(error instanceof Error ? error.message : 'Failed to suggest collection');
+    } finally {
+      setSuggestingCollection(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!formData.url.trim()) {
       alert('Please enter a URL');
+      return;
+    }
+
+    if (!formData.collectionId) {
+      alert('Please select a collection');
       return;
     }
 
@@ -252,7 +349,7 @@ export function PinsPage() {
         title: title,
         description: formData.description || undefined,
         imageUrl: formData.imageUrl || undefined,
-        collectionId: formData.collectionId || undefined,
+        collectionId: formData.collectionId,
         tags: [],
       };
 
@@ -285,40 +382,14 @@ export function PinsPage() {
     );
   }
 
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Error Loading Pins</CardTitle>
-            <CardDescription>{error}</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={loadPins}>Retry</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <>
       <div className="p-8">
-        <div className="mb-8 flex items-center justify-between">
+        <div className="mb-6 flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground">Pins</h1>
             <p className="text-muted-foreground mt-2">
-              {pins.length === 0 ? 'View and manage all your saved pins' : `${pins.length} saved ${pins.length === 1 ? 'pin' : 'pins'}`}
+              {totalPins === 0 ? 'View and manage all your saved pins' : `${totalPins} saved ${totalPins === 1 ? 'pin' : 'pins'}`}
             </p>
           </div>
           <Button onClick={() => handleOpenDialog()}>
@@ -327,7 +398,56 @@ export function PinsPage() {
           </Button>
         </div>
 
-        {pins.length === 0 ? (
+        {/* Search Bar */}
+        <div className="mb-6 relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search pins by title, description, or URL..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setCurrentPage(1); // Reset to page 1 on search
+            }}
+            className="pl-10"
+          />
+        </div>
+
+        {/* Collection Tabs */}
+        <Tabs value={selectedCollection} onValueChange={(value) => {
+          setSelectedCollection(value);
+          setCurrentPage(1); // Reset to page 1 on filter change
+        }}>
+          <TabsList className="mb-6">
+            <TabsTrigger value="all">All</TabsTrigger>
+            {collections.map((collection) => (
+              <TabsTrigger key={collection.id} value={collection.id} className="flex items-center gap-2">
+                <span
+                  className="w-2 h-2 rounded-full"
+                  style={{ backgroundColor: collection.color || '#6366f1' }}
+                />
+                {collection.name}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
+
+        {/* Loading State */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : error ? (
+          <Card>
+            <CardHeader>
+              <CardTitle>Error Loading Pins</CardTitle>
+              <CardDescription>{error}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button onClick={loadPins}>Retry</Button>
+            </CardContent>
+          </Card>
+        ) : pins.length === 0 ? (
           <Card>
             <CardHeader>
               <CardTitle>No Pins Yet</CardTitle>
@@ -353,15 +473,19 @@ export function PinsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {pins.map((pin) => (
               <Card key={pin.id} className="flex flex-col">
-                {pin.imageUrl && (
-                  <div className="aspect-video w-full overflow-hidden rounded-t-lg border-b">
+                <div className="aspect-video w-full overflow-hidden rounded-t-lg border-b">
+                  {pin.imageUrl ? (
                     <img
                       src={pin.imageUrl}
                       alt={pin.title}
                       className="w-full h-full object-cover"
                     />
-                  </div>
-                )}
+                  ) : (
+                    <div className="w-full h-full bg-muted flex items-center justify-center">
+                      <Image className="w-12 h-12 text-muted-foreground/30" />
+                    </div>
+                  )}
+                </div>
                 <CardHeader>
                   <CardTitle className="line-clamp-2">{pin.title}</CardTitle>
                   {pin.collection && (
@@ -410,6 +534,57 @@ export function PinsPage() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="mt-8">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                    className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                  />
+                </PaginationItem>
+
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                  // Show first page, last page, current page, and pages around current
+                  if (
+                    page === 1 ||
+                    page === totalPages ||
+                    (page >= currentPage - 1 && page <= currentPage + 1)
+                  ) {
+                    return (
+                      <PaginationItem key={page}>
+                        <PaginationLink
+                          onClick={() => setCurrentPage(page)}
+                          isActive={currentPage === page}
+                          className="cursor-pointer"
+                        >
+                          {page}
+                        </PaginationLink>
+                      </PaginationItem>
+                    );
+                  } else if (page === currentPage - 2 || page === currentPage + 2) {
+                    return (
+                      <PaginationItem key={page}>
+                        <PaginationEllipsis />
+                      </PaginationItem>
+                    );
+                  }
+                  return null;
+                })}
+
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                    className={currentPage === totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
           </div>
         )}
       </div>
@@ -477,26 +652,67 @@ export function PinsPage() {
               ) : null}
 
               <div className="space-y-2">
-                <Label htmlFor="description">Summary</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="description">Summary</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleGenerateSummary}
+                    disabled={generatingSummary || !formData.url}
+                  >
+                    {generatingSummary ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Generate with AI
+                      </>
+                    )}
+                  </Button>
+                </div>
                 <Textarea
                   id="description"
-                  placeholder="Write a summary about this pin..."
+                  placeholder="Write a summary or generate one with AI..."
                   value={formData.description}
                   onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                   rows={4}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="collection">Collection</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="collection">Collection *</Label>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSuggestCollection}
+                    disabled={suggestingCollection || !formData.url || !formData.title || collections.length === 0}
+                  >
+                    {suggestingCollection ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Detecting...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Auto-detect
+                      </>
+                    )}
+                  </Button>
+                </div>
                 <Select
-                  value={formData.collectionId || "none"}
-                  onValueChange={(value) => setFormData({ ...formData, collectionId: value === "none" ? '' : value })}
+                  value={formData.collectionId}
+                  onValueChange={(value) => setFormData({ ...formData, collectionId: value })}
                 >
                   <SelectTrigger id="collection">
-                    <SelectValue placeholder="Select a collection (optional)" />
+                    <SelectValue placeholder="Select a collection" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">No collection</SelectItem>
                     {collections.map((collection) => (
                       <SelectItem key={collection.id} value={collection.id}>
                         {collection.name}
@@ -510,7 +726,10 @@ export function PinsPage() {
               <Button type="button" variant="outline" onClick={handleCloseDialog}>
                 Cancel
               </Button>
-              <Button type="submit">
+              <Button
+                type="submit"
+                disabled={!formData.url.trim() || !formData.collectionId}
+              >
                 {editingPin ? 'Save Changes' : 'Create Pin'}
               </Button>
             </DialogFooter>
