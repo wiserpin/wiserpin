@@ -2,6 +2,11 @@
 
 WiserPin is a Chrome extension and web platform that helps you pin and summarize content from websites into themed Collections.
 
+## 🎥 Demo
+
+- **Live Demo:** [https://app.wiserpin.com](https://app.wiserpin.com)
+- **Video Demo:** [https://youtu.be/ZN7SGF9fu58](https://youtu.be/ZN7SGF9fu58)
+
 ## Project Structure
 
 This is a monorepo managed with pnpm workspaces and Turborepo.
